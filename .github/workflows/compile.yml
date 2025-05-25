@@ -31,45 +31,49 @@ jobs:
         with:
           go-version: '1.22' # You can specify a different Go version if needed
 
-      # Step 3: Clones the Ollama repository
-      # Uses git clone to fetch the Ollama source code into a directory named 'ollama'.
-      - name: Clone Ollama repository
-        run: git clone https://github.com/ollama/ollama
-
-      # Step 4: Changes the current directory to the cloned Ollama repository
-      # All subsequent commands will run from within this directory.
-      - name: Change directory to Ollama
-        run: cd ollama
-
-      # Step 5: Builds the Ollama executable
-      # Executes 'go build' within the Ollama directory.
-      # The output executable will typically be named 'ollama' in the current directory.
-      - name: Build Ollama
+      # Step 3: Clone, Build, and Move Ollama
+      # This step combines cloning the Ollama repository, changing into its directory,
+      # building the executable, and then moving the built executable.
+      # Combining these into a single 'run' block ensures that the 'cd' command
+      # persists for the subsequent commands within this step.
+      - name: Clone, Build, and Move Ollama
         run: |
+          # Clone the Ollama repository into a new directory named 'ollama-source'
+          # This keeps the cloned source separate from your repository's root.
+          git clone https://github.com/ollama/ollama ollama-source
+
+          # Change the current working directory to the cloned Ollama source.
+          cd ollama-source
+
+          # Build the Ollama executable. The output (typically named 'ollama')
+          # will be created in the current directory (ollama-source).
           go build
 
-      # Step 6: Moves the built Ollama executable to a designated directory in your repository
-      # This example moves it to a 'bin' directory. Create this directory if it doesn't exist.
-      - name: Move built executable
-        run: |
-          mkdir -p bin # Ensure the 'bin' directory exists
-          mv ./ollama bin/ollama # Moves the built executable
+          # Create a 'bin' directory in the root of your repository if it doesn't exist.
+          # The 'mkdir -p' command ensures that parent directories are also created if needed.
+          mkdir -p ../bin
 
-      # Step 7: Configures Git user details for the commit
+          # Move the built 'ollama' executable from 'ollama-source/' to 'bin/'
+          # in the root of your repository.
+          mv ollama ../bin/ollama
+
+      # Step 4: Configures Git user details for the commit
       # These details will appear as the committer in your Git history.
       - name: Configure Git
         run: |
           git config user.name "GitHub Actions Bot"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      # Step 8: Adds the built executable to the Git staging area and commits it
-      # The '--all' flag adds any new or modified files.
+      # Step 5: Adds the built executable to the Git staging area and commits it
+      # The 'git add bin/ollama' specifically stages the new executable.
+      # The '|| echo "No changes to commit"' part prevents the workflow from failing
+      # if the executable hasn't changed since the last commit.
       - name: Add and commit built executable
         run: |
-          git add bin/ollama # Add the specific built executable
-          git commit -m "Build: Ollama executable from latest source" || echo "No changes to commit" # Commit with a message, ignore if no changes
+          git add bin/ollama
+          git commit -m "Build: Ollama executable from latest source" || echo "No changes to commit"
 
-      # Step 9: Pushes the committed changes back to your repository
-      # Pushes to the current branch.
+      # Step 6: Pushes the committed changes back to your repository
+      # This pushes the new or updated executable to your default branch.
       - name: Push changes
         run: git push
