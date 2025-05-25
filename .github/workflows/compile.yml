@@ -9,8 +9,13 @@ on:
 # Defines a single job named 'build-and-commit'
 jobs:
   build-and-commit:
-    # Specifies the type of runner to use for the job
+    # Specifies the type of runner to use for the job (host machine)
     runs-on: ubuntu-latest
+
+    # Defines the Docker container in which the steps will run
+    # Ubuntu 24.04 LTS (Noble Numbat) includes GLIBC >= 2.38 and GCC >= 13 (for GLIBCXX >= 3.4.32)
+    container:
+      image: ubuntu:24.04
 
     # Permissions needed for this workflow.
     # 'contents: write' is crucial for committing changes back to the repository.
@@ -19,61 +24,72 @@ jobs:
 
     # Steps define a sequence of tasks to be executed as part of the job
     steps:
-      # Step 1: Checks out your repository under $GITHUB_WORKSPACE
-      # This is necessary to allow the workflow to commit changes back to your repo.
+      # Step 1: Install necessary dependencies in the container
+      # build-essential provides C/C++ compilers needed for CGO (used by Ollama)
+      # git is needed for checkout and cloning
+      # ca-certificates is needed for HTTPS git operations
+      - name: Install build dependencies in Container
+        run: |
+          apt-get update
+          apt-get install -y git ca-certificates build-essential
+
+      # Step 2: Checks out your repository under $GITHUB_WORKSPACE inside the container
       - name: Checkout current repository
         uses: actions/checkout@v4
 
-      # Step 2: Sets up the Go environment
-      # Specifies the Go version to use for building Ollama.
+      # Step 3: Sets up the Go environment inside the container
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.22' # You can specify a different Go version if needed
 
-      # Step 3: Clone, Build, and Move Ollama
-      # This step combines cloning the Ollama repository, changing into its directory,
-      # building the executable, and then moving the built executable.
-      # Combining these into a single 'run' block ensures that the 'cd' command
-      # persists for the subsequent commands within this step.
+      # Step 4: Clone, Build, and Move Ollama
+      # These commands run inside the ubuntu:24.04 container.
       - name: Clone, Build, and Move Ollama
         run: |
           # Clone the Ollama repository into a new directory named 'ollama-source'
-          # This keeps the cloned source separate from your repository's root.
           git clone https://github.com/ollama/ollama ollama-source
 
           # Change the current working directory to the cloned Ollama source.
           cd ollama-source
 
-          # Build the Ollama executable. The output (typically named 'ollama')
-          # will be created in the current directory (ollama-source).
-          go build
+          # Optional: Verify GLIBC and GLIBCXX versions in the build environment for debugging
+          echo "--- GLIBC version in build environment (Ubuntu 24.04 container) ---"
+          ldd --version
+          echo "--- GLIBCXX versions available in build environment ---"
+          strings /lib/x86_64-linux-gnu/libstdc++.so.6 | grep GLIBCXX || echo "No GLIBCXX strings found"
+
+          # Generate code as per Ollama's build instructions
+          go generate ./...
+
+          # Build the Ollama executable. The output (named 'ollama')
+          # will be created in the current directory (ollama-source)
+          # and will be linked against libraries from Ubuntu 24.04.
+          go build .
 
           # Create a 'bin' directory in the root of your repository if it doesn't exist.
-          # The 'mkdir -p' command ensures that parent directories are also created if needed.
           mkdir -p ../bin
 
-          # Move the built 'ollama' executable from 'ollama-source/' to 'bin/'
-          # in the root of your repository.
+          # Move the built 'ollama' executable to 'bin/' in your repository.
           mv ollama ../bin/ollama
 
-      # Step 4: Configures Git user details for the commit
-      # These details will appear as the committer in your Git history.
+      # Step 5: Configures Git user details for the commit (runs inside the container)
       - name: Configure Git
         run: |
-          git config user.name "GitHub Actions Bot"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      # Step 5: Adds the built executable to the Git staging area and commits it
-      # The 'git add bin/ollama' specifically stages the new executable.
-      # The '|| echo "No changes to commit"' part prevents the workflow from failing
-      # if the executable hasn't changed since the last commit.
+      # Step 6: Adds the built executable to Git staging and commits it (runs inside container)
       - name: Add and commit built executable
         run: |
           git add bin/ollama
-          git commit -m "Build: Ollama executable from latest source" || echo "No changes to commit"
+          # Check if there are changes to commit to avoid error if binary is identical
+          if ! git diff --staged --quiet; then
+            git commit -m "Build: Ollama executable from latest source (built on Ubuntu 24.04)"
+          else
+            echo "No changes to commit."
+          fi
 
-      # Step 6: Pushes the committed changes back to your repository
-      # This pushes the new or updated executable to your default branch.
+      # Step 7: Pushes the committed changes back to your repository (runs inside container)
       - name: Push changes
         run: git push
