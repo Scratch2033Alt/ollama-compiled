@@ -1,0 +1,75 @@
+# Name of the workflow as it appears in the GitHub Actions UI
+name: Build Ollama and Commit
+
+# Defines when the workflow should run
+on:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Defines a single job named 'build-and-commit'
+jobs:
+  build-and-commit:
+    # Specifies the type of runner to use for the job
+    runs-on: ubuntu-latest
+
+    # Permissions needed for this workflow.
+    # 'contents: write' is crucial for committing changes back to the repository.
+    permissions:
+      contents: write
+
+    # Steps define a sequence of tasks to be executed as part of the job
+    steps:
+      # Step 1: Checks out your repository under $GITHUB_WORKSPACE
+      # This is necessary to allow the workflow to commit changes back to your repo.
+      - name: Checkout current repository
+        uses: actions/checkout@v4
+
+      # Step 2: Sets up the Go environment
+      # Specifies the Go version to use for building Ollama.
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22' # You can specify a different Go version if needed
+
+      # Step 3: Clones the Ollama repository
+      # Uses git clone to fetch the Ollama source code into a directory named 'ollama'.
+      - name: Clone Ollama repository
+        run: git clone https://github.com/ollama/ollama
+
+      # Step 4: Changes the current directory to the cloned Ollama repository
+      # All subsequent commands will run from within this directory.
+      - name: Change directory to Ollama
+        run: cd ollama
+
+      # Step 5: Builds the Ollama executable
+      # Executes 'go build' within the Ollama directory.
+      # The output executable will typically be named 'ollama' in the current directory.
+      - name: Build Ollama
+        run: |
+          go build
+
+      # Step 6: Moves the built Ollama executable to a designated directory in your repository
+      # This example moves it to a 'bin' directory. Create this directory if it doesn't exist.
+      - name: Move built executable
+        run: |
+          mkdir -p bin # Ensure the 'bin' directory exists
+          mv ./ollama bin/ollama # Moves the built executable
+
+      # Step 7: Configures Git user details for the commit
+      # These details will appear as the committer in your Git history.
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # Step 8: Adds the built executable to the Git staging area and commits it
+      # The '--all' flag adds any new or modified files.
+      - name: Add and commit built executable
+        run: |
+          git add bin/ollama # Add the specific built executable
+          git commit -m "Build: Ollama executable from latest source" || echo "No changes to commit" # Commit with a message, ignore if no changes
+
+      # Step 9: Pushes the committed changes back to your repository
+      # Pushes to the current branch.
+      - name: Push changes
+        run: git push
