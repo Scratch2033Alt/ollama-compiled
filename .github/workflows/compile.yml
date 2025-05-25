@@ -37,6 +37,13 @@ jobs:
       - name: Checkout current repository
         uses: actions/checkout@v4
 
+      # NEW STEP: Add safe directory for Git to resolve ownership issues
+      # This command tells Git to trust the workspace directory, which is necessary
+      # when running Git commands inside a container where ownership might be "dubious".
+      - name: Add safe directory for Git
+        run: |
+          git config --global --add safe.directory /__w/ollama-compiled/ollama-compiled
+
       # Step 3: Sets up the Go environment inside the container
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -93,3 +100,4 @@ jobs:
       # Step 7: Pushes the committed changes back to your repository (runs inside container)
       - name: Push changes
         run: git push
+
